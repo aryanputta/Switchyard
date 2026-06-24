@@ -1,0 +1,32 @@
+{
+  "settings": {
+    "index": {
+      "knn": true,
+      "knn.algo_param.ef_search": 100,
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    }
+  },
+  "mappings": {
+    "properties": {
+      "product_id": { "type": "keyword" },
+      "title":       { "type": "text", "analyzer": "english" },
+      "brand":       { "type": "text", "fields": { "raw": { "type": "keyword" } } },
+      "color":       { "type": "keyword" },
+      "bullets":     { "type": "text", "analyzer": "english" },
+      "description": { "type": "text", "analyzer": "english" },
+      "price":       { "type": "float" },
+      "locale":      { "type": "keyword" },
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 384,
+        "method": {
+          "name": "hnsw",
+          "space_type": "cosinesimil",
+          "engine": "lucene",
+          "parameters": { "ef_construction": 256, "m": 16 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "switchyard"
+version = "0.1.0"
+description = "An SLO-aware retrieval router for web and product search. Spend the scarce budget where it buys the most relevance."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+real = [
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+]
+ml = [
+    "sentence-transformers>=2.2",
+    "lightgbm>=4.0",
+    "numpy>=1.24",
+]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
