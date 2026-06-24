@@ -2,7 +2,9 @@
 
 [![ci](https://github.com/aryanputta/Switchyard/actions/workflows/ci.yml/badge.svg)](https://github.com/aryanputta/Switchyard/actions/workflows/ci.yml)
 
-An SLO-aware retrieval router for web and product search. **Live demo: [`./scripts/demo.sh`](DEMO.md)**
+An SLO-aware retrieval router for web and product search.
+
+**Live demo: https://aryanputta.github.io/Switchyard/** (the trained router runs in your browser on the real model weights). Full local stack demo: [`./scripts/demo.sh`](DEMO.md).
 
 One thesis: spend the scarce budget where it buys the most relevance.
 
