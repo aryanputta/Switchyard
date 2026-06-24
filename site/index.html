@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchyard: an SLO-aware search router</title>
+<meta name="description" content="An adaptive retrieval router that picks the cheapest route per query under a latency budget, for web and product search.">
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--ink:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--good:#3fb950;--warn:#d29922}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:48px 20px 80px}
+  h1{font-size:34px;margin:0 0 6px;letter-spacing:-.5px}
+  h2{font-size:21px;margin:44px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .lede{color:var(--muted);font-size:18px;margin:0 0 8px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .links{margin:14px 0 0;font-size:15px}
+  .links a{margin-right:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  input[type=text]{width:100%;padding:12px 14px;background:#0d1117;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:16px}
+  .chips{margin:14px 0 6px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:13px;border:1px solid var(--line);border-radius:20px;padding:4px 12px;color:var(--muted);cursor:pointer;background:#0d1117}
+  .chip:hover{border-color:var(--accent);color:var(--ink)}
+  .out{margin-top:18px;display:none}
+  .route{font-size:28px;font-weight:700}
+  .route small{font-size:14px;font-weight:400;color:var(--muted)}
+  .feats{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .feat{font-size:12px;border-radius:6px;padding:3px 9px;border:1px solid var(--line);color:var(--muted)}
+  .feat.on{border-color:var(--good);color:var(--good)}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin-top:6px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  td.num{font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13px}
+  pre{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:14px;overflow:auto;font-size:13px}
+  .note{font-size:13px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Switchyard</h1>
+  <p class="lede">An SLO-aware retrieval router for web and product search.</p>
+  <p>One thesis: spend the scarce budget where it buys the most relevance. Every query should not pay for the same expensive retrieval pipeline. A controller picks the cheapest route that still answers it.</p>
+  <p class="links">
+    <a href="https://github.com/aryanputta/Switchyard">GitHub</a>
+    <a href="https://github.com/aryanputta/Switchyard/blob/main/docs/blog/adaptive-search-router.md">Blog</a>
+    <a href="https://github.com/aryanputta/Switchyard/blob/main/DEMO.md">Full demo</a>
+  </p>
+
+  <h2>Try the router</h2>
+  <p class="muted" style="margin-top:0">This runs the actual trained model in your browser. The same eight-feature extraction and linear decision the Go service uses in production, loaded from the model the Python pipeline trained on 1,039 real ESCI queries. Nothing is sent anywhere.</p>
+  <div class="panel">
+    <input id="q" type="text" placeholder="Type a search query, e.g. sony wh-1000xm5" autocomplete="off">
+    <div class="chips" id="examples"></div>
+    <div class="out" id="out">
+      <div class="route" id="route"></div>
+      <div class="feats" id="feats"></div>
+    </div>
+  </div>
+  <p class="note" id="modelnote">loading model...</p>
+
+  <h2>Why routing wins</h2>
+  <p>Measured on 1,500 real Amazon ESCI test queries (~38 graded candidates each). Running the expensive cross-encoder on every query buys almost nothing over BM25 and costs 17x the latency. An oracle that routes per query beats it on both axes.</p>
+  <table>
+    <thead><tr><th>policy</th><th>nDCG@10</th><th>rr_exact</th><th>latency (ms)</th><th>utility</th></tr></thead>
+    <tbody>
+      <tr><td>bm25_only</td><td class="num">0.7465</td><td class="num">0.7193</td><td class="num">2.00</td><td class="num">0.7385</td></tr>
+      <tr><td>always_rerank</td><td class="num">0.7510</td><td class="num">0.7361</td><td class="num">35.00</td><td class="num">0.6110</td></tr>
+      <tr><td>rule_router</td><td class="num">0.7479</td><td class="num">0.7280</td><td class="num">18.93</td><td class="num">0.6722</td></tr>
+      <tr><td>oracle</td><td class="num">0.7769</td><td class="num">0.7783</td><td class="num">4.26</td><td class="num">0.7599</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Learned router vs always-rerank on held-out test, paired bootstrap with the query as the unit: utility +0.133, 95% CI [+0.127, +0.139], win/tie/loss 449/0/12, significant. Latencies are modeled until measured under load; nDCG is real on the ESCI judgments.</p>
+
+  <h2>How it works</h2>
+  <pre>query -> features -> route controller -> { lexical(BM25) | dense(ANN) | hybrid(RRF) | rerank(cross-encoder) } -> ranking
+                          |
+        utility = nDCG - latency_penalty - violation_penalty - timeout_penalty</pre>
+  <p>Python owns research and trains the router. The Go service loads the exact frozen model and applies the same decision, so the deployed router equals the evaluated one. OpenSearch holds the BM25 and HNSW indexes; Redis caches; Prometheus and a k3s autoscaler run the serving path. The web track reuses the same controller with a crawl budget instead of a latency budget.</p>
+
+  <p class="links" style="margin-top:32px"><a href="https://github.com/aryanputta/Switchyard">Read the code on GitHub</a></p>
+</div>
+
+<script>
+const FEATURE_ORDER = ["token_count","char_count","has_question","has_model_number","has_money","has_negation","has_compatibility","has_color"];
+const ROUTE_BUDGET = {lexical:2, dense:8, hybrid:11, rerank:35};
+const COLORS = new Set(["black","white","red","blue","green","silver","gray","grey","gold","pink","purple","yellow","brown","beige","rose"]);
+const tokenRe = /[a-z0-9]+(?:'[a-z0-9]+)?/g;
+const moneyRe = /\$\s?\d+(?:\.\d+)?|\b\d+\s?(?:dollars|usd)\b/;
+const negationRe = /\b(without|no|not|free of|excluding|except|minus)\b/;
+const questionRe = /\b(how|what|why|when|where|who|which|does|is|are|can)\b/;
+const compatRe = /\b(for|compatible|fits|works with|replacement for)\b/;
+
+let MODEL = null;
+
+function tokens(s){ return (s.toLowerCase().match(tokenRe)) || []; }
+function hasModelNumber(lower){
+  for(const t of (lower.match(tokenRe)||[])){
+    if(t.length<4) continue;
+    if(/[a-z]/.test(t) && /[0-9]/.test(t)) return true;
+  }
+  return false;
+}
+function features(q){
+  const lower=q.toLowerCase(), tk=tokens(q);
+  return {
+    token_count: tk.length,
+    char_count: q.length,
+    has_question: q.includes("?") || questionRe.test(lower),
+    has_model_number: hasModelNumber(lower),
+    has_money: moneyRe.test(lower),
+    has_negation: negationRe.test(lower),
+    has_compatibility: compatRe.test(lower),
+    has_color: tk.some(t=>COLORS.has(t)),
+  };
+}
+function vector(f){
+  const d={...f}; d.token_count=f.token_count/10; d.char_count=f.char_count/60;
+  const x=[1.0];
+  for(const name of FEATURE_ORDER) x.push(typeof d[name]==="boolean"?(d[name]?1:0):d[name]);
+  return x;
+}
+function predict(q){
+  const x=vector(features(q));
+  let best=MODEL.routes[0], bestScore=-Infinity;
+  MODEL.weights.forEach((row,i)=>{
+    let s=0; for(let j=0;j<row.length;j++) s+=row[j]*x[j];
+    if(s>bestScore){bestScore=s; best=MODEL.routes[i];}
+  });
+  return best;
+}
+function render(){
+  const q=document.getElementById("q").value.trim();
+  const out=document.getElementById("out");
+  if(!q || !MODEL){ out.style.display="none"; return; }
+  const f=features(q), route=predict(q);
+  out.style.display="block";
+  document.getElementById("route").innerHTML =
+    'route: '+route+' <small>budget '+ROUTE_BUDGET[route]+' ms</small>';
+  const fl=document.getElementById("feats"); fl.innerHTML="";
+  for(const name of FEATURE_ORDER){
+    const v=f[name];
+    const on=(typeof v==="boolean")?v:false;
+    const span=document.createElement("span");
+    span.className="feat"+(on?" on":"");
+    span.textContent = (typeof v==="boolean") ? name : name+"="+(name==="char_count"?v:v);
+    if(typeof v!=="boolean") span.classList.add("on");
+    fl.appendChild(span);
+  }
+}
+const EXAMPLES=["sony wh-1000xm5","comfortable shoes for nurses working long shifts","black headphones under $100 without microphone","replacement charger for dell xps 13 9310","how does tail latency affect search systems"];
+const ex=document.getElementById("examples");
+EXAMPLES.forEach(e=>{
+  const c=document.createElement("span"); c.className="chip"; c.textContent=e;
+  c.onclick=()=>{document.getElementById("q").value=e; render();};
+  ex.appendChild(c);
+});
+document.getElementById("q").addEventListener("input", render);
+
+fetch("./router_model.json").then(r=>r.json()).then(m=>{
+  MODEL=m;
+  document.getElementById("modelnote").textContent =
+    "model loaded: "+m.routes.length+" routes, "+(m.weights[0].length-1)+" features, trained on 1,039 real ESCI queries";
+  document.getElementById("q").value="sony wh-1000xm5"; render();
+}).catch(()=>{document.getElementById("modelnote").textContent="could not load model";});
+</script>
+</body>
+</html>
